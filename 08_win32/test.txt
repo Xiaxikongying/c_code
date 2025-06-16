@@ -1,0 +1,52 @@
+#include <windows.h>
+#include <iostream>
+
+#define BUFFER_SIZE 100000
+
+int main()
+{
+    HANDLE hFile = CreateFile(
+        "test.txt",           // 文件名
+        GENERIC_READ,         // 读权限
+        0,                    // 不共享
+        NULL,                 // 默认安全属性
+        OPEN_EXISTING,        // 只打开已存在的文件
+        FILE_FLAG_OVERLAPPED, // 使能 Overlapped I/O
+        NULL                  // 无模板文件
+    );
+
+    if (hFile == INVALID_HANDLE_VALUE)
+    {
+        std::cerr << "Failed to open file! Error: " << GetLastError() << std::endl;
+        return 1;
+    }
+
+    char buffer[BUFFER_SIZE] = {0};
+    DWORD bytesRead = 0;         // 传出参数  读取到的字节数
+    OVERLAPPED overlapped = {0}; // 初始化 OVERLAPPED 结构
+    overlapped.Offset = 0;
+    overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL); // 事件用于通知 I/O 完成
+
+    if (!ReadFile(hFile, buffer, BUFFER_SIZE, &bytesRead, &overlapped))
+    {
+        if (GetLastError() == ERROR_IO_PENDING) // I/O 操作仍在进行
+        {
+            std::cout << "ReadFile is pending...\n";
+            WaitForSingleObject(overlapped.hEvent, INFINITE);          // 等待 I/O 完成
+            GetOverlappedResult(hFile, &overlapped, &bytesRead, TRUE); // 获取实际读取的字节数
+        }
+        else // 文件读取完成
+        {
+            std::cerr << "ReadFile failed! Error: " << GetLastError() << std::endl;
+            CloseHandle(hFile);
+            return 1;
+        }
+    }
+
+    std::cout << "Read " << bytesRead << " bytes: " << buffer << std::endl;
+
+    CloseHandle(overlapped.hEvent);
+    CloseHandle(hFile);
+    system("pause");
+    return 0;
+}
